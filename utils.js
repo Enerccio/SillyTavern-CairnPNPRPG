@@ -190,13 +190,16 @@ export function rollDice(notation) {
 }
 
 export function parseMixedContent(inputString) {
-    const xmlRegex = /<([\w-]+:)?([\w-]+)([^>]*)>([\s\S]*?)<\/\1?\2>/g;
+    if (typeof inputString !== 'string') return { tags: [], message: '' };
+
+    // UPDATED REGEX: Matches EITHER a self-closing tag OR a standard paired tag block
+    const xmlRegex = /<([\w-]+:)?([\w-]+)([^>]*?)(?:\/>|>([\s\S]*?)<\/\1?\2>)/g;
 
     const tags = [];
-    let cleanedMessage = inputString;
-
     let match;
+
     while ((match = xmlRegex.exec(inputString)) !== null) {
+        // match[4] will contain the inner content if it was a paired tag
         const [fullMatch, prefix, tagName, attrString, content] = match;
 
         const attributes = {};
@@ -209,13 +212,14 @@ export function parseMixedContent(inputString) {
         // Push structured tag data to the array
         tags.push({
             tag: tagName,
-            content: content.trim(),
+            prefix: prefix ? prefix.replace(':', '') : null, // Useful to verify "enerccio_cairn"
+            content: content ? content.trim() : '',         // Safe fallback for self-closing tags
             attributes: attributes
         });
     }
 
-    // Remove the XML tags from the original message and clean up extra whitespace
-    cleanedMessage = cleanedMessage.replace(xmlRegex, '').trim();
+    // Safely strip the parsed tags out of the message text
+    const cleanedMessage = inputString.replace(xmlRegex, '').trim();
 
     return {
         tags: tags,

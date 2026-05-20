@@ -1,5 +1,5 @@
 import {EXTENSION_NAME, EXTENSION_PATH, MODULE_NAME, VERSION} from './conf.js';
-import {event_types, eventSource, extension_prompt_roles, saveChat} from "/script.js";
+import {event_types, eventSource, extension_prompt_roles, redisplayChat} from "/script.js";
 import {
     deserializeList,
     getData,
@@ -10,6 +10,7 @@ import {
 import {TABLES, WARDEN_PROMPT} from "./definitions.js";
 import {GameState} from "./classes/GameState.js";
 import {DICE_ROLL_FUNCTION} from "./constants.js";
+import {formatting_stage, hook_order, MessageFormatter} from "/scripts/message-formatter.js";
 
 // eslint-disable-next-line no-undef
 const $ = jQuery;
@@ -194,7 +195,7 @@ $(async function () {
                 const stateSource = rpg.intermediary ? rpg.intermediary : rpg.state;
                 rpg.swipes[0].fromJson(stateSource.toJson());
                 rpg.swipes[0].id = stateSource.id + 1;
-                rpg.swipes[0].updateFromMessage(m.mes);
+                m.mes = rpg.swipes[0].updateFromMessage(m.mes).message;
                 setData(context.chat[rpg._messageId], RPG_KEY, rpg.toJson());
             } else if (rpg && wasSwipe === "swipe") {
                 const swipeId = m.swipe_id;
@@ -202,11 +203,13 @@ $(async function () {
                 const stateSource = rpg.intermediary ? rpg.intermediary : rpg.state;
                 rpg.swipes[swipeId].fromJson(stateSource.toJson());
                 rpg.swipes[swipeId].id = stateSource.id + 1;
-                rpg.swipes[swipeId].updateFromMessage(m.mes);
+                const mesData = rpg.swipes[swipeId].updateFromMessage(m.mes).message;
+                m.swipes[m.swipe_id] = mesData;
+                m.mes = mesData;
                 rpg.swipeIx = swipeId;
                 setData(context.chat[rpg._messageId], RPG_KEY, rpg.toJson());
             }
-
+            await redisplayChat({ targetChat: context.chat, startIndex: message, fade: false});
         });
     }
 
@@ -223,5 +226,18 @@ $(async function () {
             newRpgState.state.fromJson(rpg.swipes[rpg.swipeIx].toJson());
             setData(m, RPG_KEY, newRpgState.toJson());
         }
+    });
+
+    MessageFormatter.addHook((data) => {
+        if (typeof data !== 'string') return data;
+
+        const regex = /<enerccio_cairn[^>]*>[\s\S]*?<\/enerccio_cairn\s*>|<enerccio_cairn[^>]*>[\s\S]*|<enerccio_cairn[^>]*\/?>|<enerccio_cairn[\s\S]*/gi;
+        const r = data.replace(regex, '');
+        if (data.includes("<enerccio_cairn"))
+            console.log(r);
+        return r;
+    }, {
+        stage: formatting_stage.BEFORE_REGEX,
+        order: hook_order.EARLIEST
     });
 });

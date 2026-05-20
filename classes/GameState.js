@@ -30,6 +30,7 @@ export class GameState {
                 }
             })
         }
+        return parsed;
     }
 
     fromJson(json) {
@@ -56,14 +57,14 @@ export class GameState {
         return `[GAME STATE ${this.id}]
 
         [Player]
-        ${this.player?.outputNPC()}
+        ${this.player?.outputNPC().trim()}
 
         [Current Location]
-        ${this.location.toText()}
+        ${this.location.toText().trim()}
 
-        [Internal State]
-        ${this.internalState}
-        `;
+        [Your Hidden Knowledge (Do Not Reveal to Player)]
+        ${this.internalState.trim() || 'No active traps or hidden schemes currently set.'}
+        === END OF GAME STATE ===`;
     }
 
 }
