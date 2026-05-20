@@ -113,8 +113,8 @@ function rpgEnable() {
     context.registerFunctionTool({
         name: `${DICE_ROLL_FUNCTION}`,
         stealth: !DEVEL,
-        displayName: 'Request Dice Rolls',
-        description: 'Call this BEFORE writing your narration to execute all dice rolls needed for the entire turn.',
+        displayName: 'Request Dice Roll',
+        description: 'Call this BEFORE needing a roll value.',
         parameters: {
             $schema: 'http://json-schema.org/draft-04/schema#',
             type: 'object',
