@@ -1,7 +1,7 @@
 import {EXTENSION_NAME, EXTENSION_PATH, MODULE_NAME, VERSION} from './conf.js';
 import {debounce} from "/scripts/utils.js";
 import {extension_settings} from "/scripts/extensions.js";
-import {saveSettingsDebounced} from "/script.js";
+import {saveChatDebounced, saveSettingsDebounced} from "/script.js";
 
 export function log() {
     console.log(`[${EXTENSION_NAME}]`, ...arguments);
@@ -81,4 +81,144 @@ export function getSettings(key, copy=false, defval = "") {
     } else {
         return value
     }
+}
+
+export function setData(message, key, value) {
+    // store information on the message object
+    if (!message.extra) {
+        message.extra = {};
+    }
+    if (!message.extra[MODULE_NAME]) {
+        message.extra[MODULE_NAME] = {};
+    }
+
+    message.extra[MODULE_NAME][key] = value;
+
+    // Also save on the current swipe info if present
+    let swipe_index = message.swipe_id
+    if (swipe_index && message.swipe_info?.[swipe_index]) {
+        if (!message.swipe_info[swipe_index].extra) {
+            message.swipe_info[swipe_index].extra = {};
+        }
+        message.swipe_info[swipe_index].extra[MODULE_NAME] = structuredClone(message.extra[MODULE_NAME])
+    }
+
+    saveChatDebounced();
+}
+
+export function getData(message, key) {
+    // get information from the message object
+    return message?.extra?.[MODULE_NAME]?.[key];
+}
+
+export function serializeList(list) {
+    if (!list)
+        return [];
+
+    const l = [];
+    for (let x of list) {
+        l.push(x.toJson());
+    }
+    return l;
+}
+
+export function deserializeList(json, provider) {
+    if (!json)
+        return [];
+
+    const l = [];
+    for (let x of json) {
+        const object = provider();
+        object.fromJson(x);
+        l.push(object);
+    }
+    return l;
+}
+
+export function rollDice(notation) {
+    // Remove spaces and convert to uppercase for consistency
+    const sanitized = notation.replace(/\s+/g, '').toUpperCase();
+
+    // Split by + or - but keep the delimiter to know if we add or subtract
+    // This regex splits the string into parts like ["2d6", "+4", "1d10"]
+    const parts = sanitized.split(/([+-])/);
+
+    let total = 0;
+    let currentOp = '+'; // Default first operation is addition
+
+    for (let part of parts) {
+        if (part === '+' || part === '-') {
+            currentOp = part;
+            continue;
+        }
+
+        let value = 0;
+
+        if (part.includes('D')) {
+            // Handle dice notation (e.g., "2d6" or "d20")
+            const [countStr, sidesStr] = part.split('D');
+
+            // If no count is provided (e.g., "d20"), default to 1
+            const count = countStr === '' ? 1 : parseInt(countStr, 10);
+            const sides = parseInt(sidesStr, 10);
+
+            if (isNaN(count) || isNaN(sides) || sides <= 0) {
+                throw new Error(`Invalid dice notation: ${part}`);
+            }
+
+            // Roll the die 'count' times and sum them up
+            for (let i = 0; i < count; i++) {
+                value += Math.floor(Math.random() * sides) + 1;
+            }
+        } else {
+            // Handle flat modifiers (e.g., "10")
+            value = parseInt(part, 10);
+            if (isNaN(value)) {
+                throw new Error(`Invalid modifier: ${part}`);
+            }
+        }
+
+        // Apply the result based on the current operator
+        if (currentOp === '+') {
+            total += value;
+        } else if (currentOp === '-') {
+            total -= value;
+        }
+    }
+
+    return total;
+}
+
+export function parseMixedContent(inputString) {
+    const xmlRegex = /<([\w-]+:)?([\w-]+)([^>]*)>([\s\S]*?)<\/\1?\2>/g;
+
+    const tags = [];
+    let cleanedMessage = inputString;
+
+    let match;
+    while ((match = xmlRegex.exec(inputString)) !== null) {
+        const [fullMatch, prefix, tagName, attrString, content] = match;
+
+        const attributes = {};
+        const attrRegex = /([\w-]+)=["']([^"']*)["']/g;
+        let attrMatch;
+        while ((attrMatch = attrRegex.exec(attrString)) !== null) {
+            attributes[attrMatch[1]] = attrMatch[2];
+        }
+
+        // Push structured tag data to the array
+        tags.push({
+            tag: tagName,
+            content: content.trim(),
+            attributes: attributes
+        });
+    }
+
+    // Remove the XML tags from the original message and clean up extra whitespace
+    cleanedMessage = cleanedMessage.replace(xmlRegex, '').trim();
+
+    return {
+        tags: tags,
+        message: cleanedMessage
+    };
 }
