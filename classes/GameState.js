@@ -181,6 +181,11 @@ export class GameState {
     }
 
     toPrompt() {
+        const nearbySpaces = this.getNearbyDiscoveredSpaces(2);
+        const nearbyText = nearbySpaces.length > 0
+            ? JSON.stringify(nearbySpaces, null, 3)
+            : "[] (No other rooms discovered nearby)";
+
         return `[GAME STATE ${this.id}]
 
         [Player]
@@ -188,6 +193,9 @@ export class GameState {
 
         [Current Location]
         ${this.currentLoc.toText(this).trim()}
+
+        [Nearby Discovered Spaces]
+        ${nearbyText}
 
         [Your Hidden Knowledge (Do Not Reveal to Player)]
         ${this.internalState.trim() || 'No active traps or hidden schemes currently set.'}
@@ -223,6 +231,48 @@ export class GameState {
         return localizedName;
     }
 
+    getNearbyDiscoveredSpaces(maxDepth = 2) {
+        const startId = this.locationId;
+        if (!startId) return [];
+
+        const queue = [{ id: startId, depth: 0 }];
+        const visited = new Set([startId]);
+        const nearbySpaces = [];
+
+        while (queue.length > 0) {
+            const { id, depth } = queue.shift();
+
+            if (depth >= maxDepth) continue;
+
+            const currentRoom = this.getLocation(id);
+            if (!currentRoom || !currentRoom.exitIds) continue;
+
+            // Iterate through your location's exit dictionary
+            for (const direction in currentRoom.exitIds) {
+                const targetUuid = currentRoom.exitIds[direction];
+
+                // Ensure the destination exists, is registered, and hasn't been visited in this search
+                if (targetUuid && this.locationRegistry[targetUuid] && !visited.has(targetUuid)) {
+                    visited.add(targetUuid);
+
+                    const targetRoom = this.locationRegistry[targetUuid];
+
+                    // Match the localization strategy used in your toText() method
+                    const aiFriendlyName = this.localizeKeyForAI ? this.localizeKeyForAI(targetUuid) : targetRoom.name;
+
+                    nearbySpaces.push({
+                        name: aiFriendlyName,
+                        description: targetRoom.description || "",
+                        distance: depth + 1
+                    });
+
+                    queue.push({ id: targetUuid, depth: depth + 1 });
+                }
+            }
+        }
+
+        return nearbySpaces;
+    }
 }
 
 function rotateKey(currentId) {
