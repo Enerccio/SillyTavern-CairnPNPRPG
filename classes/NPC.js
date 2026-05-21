@@ -3,6 +3,7 @@ import {Item} from "./Item.js";
 import {HasStats} from "./HasStats.js";
 
 export class NPC extends HasStats {
+
     constructor() {
         super();
         this.name = "";
@@ -15,9 +16,15 @@ export class NPC extends HasStats {
         return `${this.name}
         ${this.outputStats()}
         Status: ${this.outputStatus()}
+        Slots: ${this.items.length}/${this.itemMaxCapacity}${this.slotWarning()}
         Items:
-        Slots: ${this.items.length}/${this.itemMaxCapacity}
         ${this.outputItems()}`
+    }
+
+    slotWarning() {
+        if (this.isAboveCapacity())
+            return " (WARNING: Item slots are full!)"
+        return "";
     }
 
     outputStatus() {
@@ -59,5 +66,14 @@ export class NPC extends HasStats {
             itemMaxCapacity: this.itemMaxCapacity,
             items: serializeList(this.items),
         }
+    }
+
+    isAboveCapacity() {
+        let slots = 0;
+        for (let item of this.items) {
+            slots += item.slotCost;
+        }
+
+        return false;
     }
 }

@@ -1,7 +1,8 @@
 import {EXTENSION_NAME, EXTENSION_PATH, MODULE_NAME, VERSION} from './conf.js';
 import {debounce} from "/scripts/utils.js";
-import {extension_settings} from "/scripts/extensions.js";
+import {extension_settings, renderExtensionTemplateAsync} from "/scripts/extensions.js";
 import {saveChatDebounced, saveSettingsDebounced} from "/script.js";
+import {Popup, POPUP_TYPE} from "/scripts/popup.js";
 
 export function log() {
     console.log(`[${EXTENSION_NAME}]`, ...arguments);
@@ -226,3 +227,85 @@ export function parseMixedContent(inputString) {
         message: cleanedMessage
     };
 }
+
+export async function manualEdit(serializedRpg) {
+    const template = $(await renderExtensionTemplateAsync(EXTENSION_PATH, 'debug'));
+    const prompt = template.find('#debugPrompt');
+    prompt.val(JSON.stringify(serializedRpg, null, 2));
+    const popup = new Popup(template, POPUP_TYPE.CONFIRM, '', { wide: true, large: true, okButton: 'Save changes', cancelButton: 'Close'});
+    const result = await popup.show();
+
+    // If the user cancels, return the original input
+    if (!result) {
+        return null;
+    }
+
+    const output = String(prompt.val());
+    return JSON.parse(output);
+}
+
+export function getMessageDiv(index) {
+    // given a message index, get the div element for that message
+    // it will have an attribute "mesid" that is the message index
+    // noinspection JSUnresolvedReference
+    let div = $(`div[mesid="${index}"]`);
+    if (div.length === 0) {
+        return null;
+    }
+    return div;
+}
+
+let cairnAnimFrameIndex = 0;
+export function processInputStream(data, ctx) {
+    if (typeof data !== 'string') return data;
+
+    if (ctx.isReasoning)
+        return data;
+
+    // Added a specific middle group for self-closing tags: <enerccio_cairn... />
+    const regex = /(?<!`)(?:(<enerccio_cairn[^>]*>[\s\S]*?<\/enerccio_cairn[^>]*>)|(<enerccio_cairn[^>]*\/>)|(<enerccio_cairn[\s\S]*))/gi;
+    let removedAggressively = false;
+
+    const result = data.replace(regex, (match, closedGroup, selfClosingGroup, unclosedGroup) => {
+        // Only trigger if it falls explicitly into the unclosedGroup (now the 3rd group)
+        if (unclosedGroup !== undefined) {
+            removedAggressively = true;
+        }
+        return '';
+    });
+
+    if (removedAggressively) {
+        const frames = [
+            ".", "..", "...",
+            "...T", "...Th", "...Thi", "...Thin", "...Think", "...Thinki", "...Thinkin", "...Thinking",
+            "...Thinking.", "...Thinking..", "...Thinking..."
+        ];
+
+        const currentFrame = frames[cairnAnimFrameIndex % frames.length];
+        cairnAnimFrameIndex++;
+
+        return `${result}${currentFrame}`;
+    } else {
+        cairnAnimFrameIndex = 0;
+    }
+
+    return result;
+}
+
+
+// MessageFormatter.addHook((data) => {
+//     if (typeof data !== 'string') return data;
+//     // if (DEVEL)
+//     //     return data.replace("<", "&lt;").replace(">", "&gt;");
+//
+//     // Added (?<!\`) to the start of every alternative branch to shield code blocks
+//     // Aggressive Variant
+//     const regex = /(?<!`)<enerccio_cairn[^>]*>[\s\S]*?<\/enerccio_cairn\s*>|(?<!`)<enerccio_cairn[^>]*>[\s\S]*|(?<!`)<enerccio_cairn[^>]*\/?>|(?<!`)<enerccio_cairn[\s\S]*/gi;
+//     // Less aggressive Variant
+//     // const regex = /(?<!`)<enerccio_cairn[^>]*>[\s\S]*?<\/enerccio_cairn\s*>|(?<!`)<enerccio_cairn[^>]*\/>|(?<!`)<enerccio_cairn[^>]*>/gi;
+//
+//     return data.replace(regex, '');
+// }, {
+//     stage: formatting_stage.BEFORE_REGEX,
+//     order: hook_order.EARLIEST
+// });

@@ -1,16 +1,21 @@
-import {EXTENSION_NAME, EXTENSION_PATH, MODULE_NAME, VERSION} from './conf.js';
+import {MODULE_NAME} from './conf.js';
 import {event_types, eventSource, extension_prompt_roles, redisplayChat} from "/script.js";
 import {
     deserializeList,
     getData,
-    log, rollDice,
+    getMessageDiv,
+    log,
+    manualEdit,
+    processInputStream,
+    rollDice,
     serializeList,
     setData
 } from "./utils.js";
-import {TABLES, WARDEN_PROMPT} from "./definitions.js";
+import {FIRST_PROMPT_RULES, TABLES, WARDEN_PROMPT} from "./definitions.js";
 import {GameState} from "./classes/GameState.js";
-import {DICE_ROLL_FUNCTION} from "./constants.js";
+import {cairnDebugButton, DICE_ROLL_FUNCTION} from "./constants.js";
 import {formatting_stage, hook_order, MessageFormatter} from "/scripts/message-formatter.js";
+import {t} from "/scripts/i18n.js";
 
 // eslint-disable-next-line no-undef
 const $ = jQuery;
@@ -85,11 +90,15 @@ async function findTopState(startAt = undefined) {
 }
 
 async function insertRpgData() {
-    const prompt = WARDEN_PROMPT;
+    let prompt = WARDEN_PROMPT;
 
     const rpg = await findTopState();
     if (!rpg)
         return;
+
+    if (rpg.state.id === 0) {
+        prompt += FIRST_PROMPT_RULES;
+    }
 
     return prompt + "\n" + rpg.state.toPrompt();
 }
@@ -156,7 +165,8 @@ function rpgDisable() {
     context.unregisterFunctionTool(DICE_ROLL_FUNCTION);
 }
 
-function rpgEnableDisable() {
+async function rpgEnableDisable() {
+    await updateAllMessageVisuals();
     if (isRpgEnabled())
         rpgEnable();
     else
@@ -172,6 +182,47 @@ function isRpgEnabled() {
     return false;
 }
 
+async function updateMessageVisuals(i) {
+    let divElement = getMessageDiv(i);
+    if (!divElement) {
+        return;
+    }
+    if (!DEVEL)
+        return;
+
+    const oldDiv = divElement.find(`div.${cairnDebugButton}`);
+    oldDiv.remove();
+
+    if (!isRpgEnabled())
+        return;
+
+    let message = context.chat[i];
+    let rpgState = getData(message, RPG_KEY);
+    if (!rpgState || !rpgState.state)
+        return;
+
+    let mesAvatarWrapper = divElement.find('.mesAvatarWrapper');
+    let $icon = $(`<div title="${t`Edit Internal State`}" class="mes_button ${cairnDebugButton} fa-solid fa-brain" tabindex="0"></div>`);
+    $icon.on('click', async () => {
+        rpgState = getData(message, RPG_KEY);
+        const newData = await manualEdit(rpgState);
+        if (newData) {
+            rpgState.state = newData;
+            setData(message, rpgState, RPG_KEY);
+        }
+    });
+    mesAvatarWrapper.append($icon);
+}
+
+async function updateAllMessageVisuals() {
+    // update the message visuals of each visible message, styled according to the inclusion criteria
+    let chat = context.chat;
+    // noinspection JSUnresolvedReference
+    let firstDisplayedId = Number($('#chat').children('.mes').first().attr('mesid'))
+    for (let i=chat.length-1; i >= firstDisplayedId; i--) {
+        await updateMessageVisuals(i);
+    }
+}
 
 $(async function () {
     let update_events = [event_types.CHAT_CHANGED, event_types.CHAT_LOADED]
@@ -189,27 +240,42 @@ $(async function () {
             const m = context.chat[message];
             const rpg = await findTopState(message - 1);
 
-            if (rpg && wasSwipe === "normal") {
+            if (!rpg) return;
+
+            const stateSource = rpg.intermediary ? rpg.intermediary : rpg.state;
+            const sourceJsonString = JSON.stringify(stateSource.toJson());
+
+            if (wasSwipe === "normal") {
                 rpg.swipeIx = 0;
-                rpg.swipes[0] = new GameState();
-                const stateSource = rpg.intermediary ? rpg.intermediary : rpg.state;
-                rpg.swipes[0].fromJson(stateSource.toJson());
-                rpg.swipes[0].id = stateSource.id + 1;
-                m.mes = rpg.swipes[0].updateFromMessage(m.mes).message;
+
+                const newSwipeState = new GameState();
+                newSwipeState.fromJson(JSON.parse(sourceJsonString));
+                newSwipeState.id = stateSource.id + 1;
+
+                const result = newSwipeState.updateFromMessage(m.mes);
+                m.mes = result.message;
+
+                rpg.swipes[0] = newSwipeState;
                 setData(context.chat[rpg._messageId], RPG_KEY, rpg.toJson());
-            } else if (rpg && wasSwipe === "swipe") {
+
+            } else if (wasSwipe === "swipe") {
                 const swipeId = m.swipe_id;
-                rpg.swipes[swipeId] = new GameState();
-                const stateSource = rpg.intermediary ? rpg.intermediary : rpg.state;
-                rpg.swipes[swipeId].fromJson(stateSource.toJson());
-                rpg.swipes[swipeId].id = stateSource.id + 1;
-                const mesData = rpg.swipes[swipeId].updateFromMessage(m.mes).message;
-                m.swipes[m.swipe_id] = mesData;
-                m.mes = mesData;
+
+                const newSwipeState = new GameState();
+                newSwipeState.fromJson(JSON.parse(sourceJsonString));
+                newSwipeState.id = stateSource.id + 1;
+
+                const result = newSwipeState.updateFromMessage(m.mes);
+                m.swipes[swipeId] = result.message;
+                m.mes = result.message;
+
                 rpg.swipeIx = swipeId;
+                rpg.swipes[swipeId] = newSwipeState;
                 setData(context.chat[rpg._messageId], RPG_KEY, rpg.toJson());
             }
+
             await redisplayChat({ targetChat: context.chat, startIndex: message, fade: false});
+            setTimeout(() => updateAllMessageVisuals(), 250);
         });
     }
 
@@ -224,19 +290,13 @@ $(async function () {
             const newRpgState = new RPG();
             newRpgState.state = new GameState();
             newRpgState.state.fromJson(rpg.swipes[rpg.swipeIx].toJson());
+            newRpgState.state.clearCaches();
             setData(m, RPG_KEY, newRpgState.toJson());
         }
+        setTimeout(() => updateAllMessageVisuals(), 250);
     });
 
-    MessageFormatter.addHook((data) => {
-        if (typeof data !== 'string') return data;
-
-        const regex = /<enerccio_cairn[^>]*>[\s\S]*?<\/enerccio_cairn\s*>|<enerccio_cairn[^>]*>[\s\S]*|<enerccio_cairn[^>]*\/?>|<enerccio_cairn[\s\S]*/gi;
-        const r = data.replace(regex, '');
-        if (data.includes("<enerccio_cairn"))
-            console.log(r);
-        return r;
-    }, {
+    MessageFormatter.addHook(processInputStream, {
         stage: formatting_stage.BEFORE_REGEX,
         order: hook_order.EARLIEST
     });

@@ -5,3 +5,14 @@ export const ATTACK_FUNCTION = `${MODULE_NAME}_attack`;
 
 export const INTERNAL_STATE = "internal_state";
 export const INTERNAL_STATE_XML = `${MODULE_NAME}:${INTERNAL_STATE}`;
+export const CHANGE_LOCATION = "change_location";
+export const CHANGE_LOCATION_XML = `${MODULE_NAME}:${CHANGE_LOCATION}`;
+export const NEW_LOCATION = "new_location";
+export const NEW_LOCATION_XML = `${MODULE_NAME}:${NEW_LOCATION}`;
+export const UPDATE_LOCATION = "update_location";
+export const UPDATE_LOCATION_XML = `${MODULE_NAME}:${UPDATE_LOCATION}`;
+
+export const INVALID_ACTION = "invalid_action";
+export const INVALID_ACTION_XML = `${MODULE_NAME}:${INVALID_ACTION}`;
+
+export const cairnDebugButton = `${MODULE_NAME}_debug_button`

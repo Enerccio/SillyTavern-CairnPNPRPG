@@ -1,7 +1,9 @@
+import {HasId} from "./HasId.js";
 
-export class Item {
+export class Item extends HasId {
 
     constructor() {
+        super();
         this.name = "";
         this.slotCost = 1;
         this.armorBonus = "N/A";
@@ -33,6 +35,7 @@ export class Item {
 
     toJson() {
         return {
+            ...super.toJson(),
             name: this.name,
             slotCost: this.slotCost,
             armorBonus: this.armorBonus,
@@ -43,6 +46,7 @@ export class Item {
     }
 
     fromJson(json) {
+        super.fromJson(json);
         this.name = json.name;
         this.slotCost = json.slotCost;
         this.armorBonus = json.armorBonus;
