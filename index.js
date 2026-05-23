@@ -16,10 +16,10 @@ import {GameState} from "./classes/GameState.js";
 import {cairnDebugButton, DICE_ROLL_FUNCTION} from "./constants.js";
 import {formatting_stage, hook_order, MessageFormatter} from "/scripts/message-formatter.js";
 import {t} from "/scripts/i18n.js";
+import { tag_map } from "/scripts/tags.js";
 
 // eslint-disable-next-line no-undef
 const $ = jQuery;
-const context = SillyTavern.getContext();
 const RPG_KEY = `${MODULE_NAME}_rpg`;
 const DEVEL = true;
 
@@ -58,17 +58,17 @@ class RPG {
 }
 
 async function findTopState(startAt = undefined) {
-    if (context.chat.length === 0)
+    if (SillyTavern.getContext().chat.length === 0)
         return null;
 
     if (startAt < 0)
         return null;
 
-    if (startAt === undefined || startAt >= context.chat.length)
-        startAt = context.chat.length - 1;
+    if (startAt === undefined || startAt >= SillyTavern.getContext().chat.length)
+        startAt = SillyTavern.getContext().chat.length - 1;
 
     for (let i=startAt; i>=0; i--) {
-        const message = context.chat[i];
+        const message = SillyTavern.getContext().chat[i];
         const rpg = getData(message, RPG_KEY);
         if (rpg) {
             const rpgInstance = new RPG();
@@ -83,9 +83,9 @@ async function findTopState(startAt = undefined) {
     rpg.state = new GameState();
     await rpg.state.init();
 
-    const m = context.chat[context.chat.length - 1];
+    const m = SillyTavern.getContext().chat[SillyTavern.getContext().chat.length - 1];
     setData(m, RPG_KEY, rpg.toJson());
-    rpg._messageId = context.chat.length - 1;
+    rpg._messageId = SillyTavern.getContext().chat.length - 1;
     return rpg;
 }
 
@@ -118,9 +118,9 @@ async function processPrompt(data) {
 }
 
 function rpgEnable() {
-    context.setExtensionPrompt(`${MODULE_NAME}_tables`, TABLES, 0, 9999, false, extension_prompt_roles.SYSTEM);
+    SillyTavern.getContext().setExtensionPrompt(`${MODULE_NAME}_tables`, TABLES, 0, 9999, false, extension_prompt_roles.SYSTEM);
 
-    context.registerFunctionTool({
+    SillyTavern.getContext().registerFunctionTool({
         name: `${DICE_ROLL_FUNCTION}`,
         stealth: !DEVEL,
         displayName: 'Request Dice Roll',
@@ -157,12 +157,12 @@ function rpgEnable() {
 
 function rpgDisable() {
     // noinspection JSCheckFunctionSignatures
-    context.setExtensionPrompt(`${MODULE_NAME}_tables`, "");
+    SillyTavern.getContext().setExtensionPrompt(`${MODULE_NAME}_tables`, "");
     // noinspection JSCheckFunctionSignatures
-    context.setExtensionPrompt(`${MODULE_NAME}_gameplay`, "");
+    SillyTavern.getContext().setExtensionPrompt(`${MODULE_NAME}_gameplay`, "");
 
-    context.macros.registry.unregisterMacro(`${MODULE_NAME}_game`);
-    context.unregisterFunctionTool(DICE_ROLL_FUNCTION);
+    SillyTavern.getContext().macros.registry.unregisterMacro(`${MODULE_NAME}_game`);
+    SillyTavern.getContext().unregisterFunctionTool(DICE_ROLL_FUNCTION);
 }
 
 async function rpgEnableDisable() {
@@ -174,12 +174,30 @@ async function rpgEnableDisable() {
 }
 
 function isRpgEnabled() {
-    for (const tag of context.tags) {
-        if (tag?.name === "Cairn") {
-            return true;
+    const ctx = SillyTavern.getContext();
+    const activeCharacters = [];
+
+    if (ctx.groupId !== null && ctx.groupId !== undefined) {
+        const currentGroup = ctx.groups.find(g => g.id === ctx.groupId);
+        if (currentGroup && Array.isArray(currentGroup.members)) {
+            currentGroup.members.forEach(memberId => {
+                const char = ctx.characters.find(c => c.avatar === memberId || c.id === memberId);
+                if (char) activeCharacters.push(char);
+            });
         }
+    } else if (ctx.characterId !== null && ctx.characterId !== undefined && ctx.characterId >= 0) {
+        const char = ctx.characters[ctx.characterId];
+        if (char) activeCharacters.push(char);
     }
-    return false;
+
+    return activeCharacters.some(char => {
+        const characterTagIds = tag_map[char.avatar] || [];
+
+        return characterTagIds.some(tagId => {
+            const globalTag = ctx.tags.find(t => t.id === tagId);
+            return globalTag && globalTag.name === "Cairn";
+        });
+    });
 }
 
 async function updateMessageVisuals(i) {
@@ -196,7 +214,7 @@ async function updateMessageVisuals(i) {
     if (!isRpgEnabled())
         return;
 
-    let message = context.chat[i];
+    let message = SillyTavern.getContext().chat[i];
     let rpgState = getData(message, RPG_KEY);
     if (!rpgState || !rpgState.state)
         return;
@@ -216,7 +234,7 @@ async function updateMessageVisuals(i) {
 
 async function updateAllMessageVisuals() {
     // update the message visuals of each visible message, styled according to the inclusion criteria
-    let chat = context.chat;
+    let chat = SillyTavern.getContext().chat;
     // noinspection JSUnresolvedReference
     let firstDisplayedId = Number($('#chat').children('.mes').first().attr('mesid'))
     for (let i=chat.length-1; i >= firstDisplayedId; i--) {
@@ -227,7 +245,7 @@ async function updateAllMessageVisuals() {
 $(async function () {
     let update_events = [event_types.CHAT_CHANGED, event_types.CHAT_LOADED]
     for (let event of update_events) {
-        context.eventSource.on(event, rpgEnableDisable);
+        SillyTavern.getContext().eventSource.on(event, rpgEnableDisable);
     }
     eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, async (data) => {
         await processPrompt(data);
@@ -237,7 +255,7 @@ $(async function () {
         eventSource.on(event, async (message, wasSwipe) => {
             if (!isRpgEnabled())
                 return;
-            const m = context.chat[message];
+            const m = SillyTavern.getContext().chat[message];
             const rpg = await findTopState(message - 1);
 
             if (!rpg) return;
@@ -256,7 +274,7 @@ $(async function () {
                 m.mes = result.message;
 
                 rpg.swipes[0] = newSwipeState;
-                setData(context.chat[rpg._messageId], RPG_KEY, rpg.toJson());
+                setData(SillyTavern.getContext().chat[rpg._messageId], RPG_KEY, rpg.toJson());
 
             } else if (wasSwipe === "swipe") {
                 const swipeId = m.swipe_id;
@@ -271,10 +289,10 @@ $(async function () {
 
                 rpg.swipeIx = swipeId;
                 rpg.swipes[swipeId] = newSwipeState;
-                setData(context.chat[rpg._messageId], RPG_KEY, rpg.toJson());
+                setData(SillyTavern.getContext().chat[rpg._messageId], RPG_KEY, rpg.toJson());
             }
 
-            await redisplayChat({ targetChat: context.chat, startIndex: message, fade: false});
+            await redisplayChat({ targetChat: SillyTavern.getContext().chat, startIndex: message, fade: false});
             setTimeout(() => updateAllMessageVisuals(), 250);
         });
     }
@@ -283,7 +301,7 @@ $(async function () {
         if (!isRpgEnabled())
             return;
 
-        const m = context.chat[messageId];
+        const m = SillyTavern.getContext().chat[messageId];
         const rpg = await findTopState(messageId - 1);
         if (rpg) {
             // we persist last swipe into new rpg

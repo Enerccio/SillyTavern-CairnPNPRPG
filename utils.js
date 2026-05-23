@@ -291,21 +291,3 @@ export function processInputStream(data, ctx) {
 
     return result;
 }
-
-
-// MessageFormatter.addHook((data) => {
-//     if (typeof data !== 'string') return data;
-//     // if (DEVEL)
-//     //     return data.replace("<", "&lt;").replace(">", "&gt;");
-//
-//     // Added (?<!\`) to the start of every alternative branch to shield code blocks
-//     // Aggressive Variant
-//     const regex = /(?<!`)<enerccio_cairn[^>]*>[\s\S]*?<\/enerccio_cairn\s*>|(?<!`)<enerccio_cairn[^>]*>[\s\S]*|(?<!`)<enerccio_cairn[^>]*\/?>|(?<!`)<enerccio_cairn[\s\S]*/gi;
-//     // Less aggressive Variant
-//     // const regex = /(?<!`)<enerccio_cairn[^>]*>[\s\S]*?<\/enerccio_cairn\s*>|(?<!`)<enerccio_cairn[^>]*\/>|(?<!`)<enerccio_cairn[^>]*>/gi;
-//
-//     return data.replace(regex, '');
-// }, {
-//     stage: formatting_stage.BEFORE_REGEX,
-//     order: hook_order.EARLIEST
-// });
